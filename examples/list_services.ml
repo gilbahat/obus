@@ -28,6 +28,6 @@ let list name get_bus =
     (List.filter (fun s -> s.[0] <> ':') names)
 
 let () = Lwt_main.run begin
-  let%lwt () = list "session" OBus_bus.session in
-  list "system" OBus_bus.system
+  let%lwt () = list "session" OBus_bus_unix.session in
+  list "system" OBus_bus_unix.system
 end

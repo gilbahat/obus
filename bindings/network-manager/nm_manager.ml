@@ -15,7 +15,7 @@ let section = Lwt_log.Section.make "network-manager"
 include OBus_peer.Private
 
 let daemon () =
-  let%lwt bus = OBus_bus.system () in
+  let%lwt bus = OBus_bus_unix.system () in
   Lwt.return (OBus_peer.make bus "org.freedesktop.NetworkManager")
 
 (* +-----------------------------------------------------------------+

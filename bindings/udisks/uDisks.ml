@@ -78,7 +78,7 @@ let permission_denied = "org.freedesktop.UDisks.Error.PermissionDenied"
 include OBus_peer.Private
 
 let daemon () =
-  let%lwt bus = OBus_bus.system () in
+  let%lwt bus = OBus_bus_unix.system () in
   return (OBus_peer.make bus "org.freedesktop.UDisks")
 
 open UDisks_interfaces.Org_freedesktop_UDisks

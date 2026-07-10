@@ -39,13 +39,13 @@ let test () =
   let%lwt () = Lwt_io.flush Lwt_io.stdout in
   match Unix.fork () with
     | 0 ->
-        let%lwt con = OBus_bus.session () in
+        let%lwt con = OBus_bus_unix.session () in
         let%lwt () = wait_for_name con in
         let%lwt () = run_tests con test_count in
         exit 0
     | pid ->
         let%lwt () = printlf "sending and receiving %d messages through the message bus." test_count in
-        let%lwt bus = OBus_bus.session () in
+        let%lwt bus = OBus_bus_unix.session () in
         let%lwt _ = OBus_bus.request_name bus name in
         let%lwt progress = Progress.make "received" test_count in
         let waiter, wakener = wait () in

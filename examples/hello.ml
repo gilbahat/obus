@@ -11,6 +11,6 @@
    unique name *)
 
 let () = Lwt_main.run begin
-  let%lwt bus = OBus_bus.session () in
+  let%lwt bus = OBus_bus_unix.session () in
   Lwt_io.printlf "My unique connection name is: %s" (OBus_connection.name bus)
 end

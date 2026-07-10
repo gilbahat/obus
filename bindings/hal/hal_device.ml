@@ -18,7 +18,7 @@ type udi = OBus_path.t
 let udi = OBus_proxy.path
 
 let computer () =
-  let%lwt bus = OBus_bus.system () in
+  let%lwt bus = OBus_bus_unix.system () in
   return (OBus_proxy.make
             (OBus_peer.make bus "org.freedesktop.Hal")
             ["org"; "freedesktop"; "Hal"; "devices"; "computer"])

@@ -1,8 +1,9 @@
 (library
  (name obus_hal)
  (public_name obus.hal)
+ (package obus-lwt-unix)
  (wrapped false)
- (libraries lwt obus)
+ (libraries lwt obus obus.unix)
  (preprocess (pps lwt_ppx ppx_obus)))
 
 (rule

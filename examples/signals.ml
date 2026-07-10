@@ -25,7 +25,7 @@ let handle_multimedia_keys device =
   >|= E.keep
 
 let () = Lwt_main.run begin
-  let%lwt session = OBus_bus.session () in
+  let%lwt session = OBus_bus_unix.session () in
 
   (* +---------------------------------------------------------------+
      | Signals from message bus                                      |

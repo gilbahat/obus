@@ -12,13 +12,13 @@ include OBus_proxy.Private
 open Nm_interfaces.Org_freedesktop_NetworkManagerSettings
 
 let user () =
-  let%lwt bus = OBus_bus.session () in
+  let%lwt bus = OBus_bus_unix.session () in
   return (OBus_proxy.make
             (OBus_peer.make bus "org.freedesktop.NetworkManagerUserSettings")
             [ "org"; "freedesktop"; "NetworkManagerSettings" ])
 
 let system () =
-  let%lwt bus = OBus_bus.system () in
+  let%lwt bus = OBus_bus_unix.system () in
   return (OBus_proxy.make
             (OBus_peer.make bus "org.freedesktop.NetworkManagerSystemSettings")
             [ "org"; "freedesktop"; "NetworkManagerSettings" ])

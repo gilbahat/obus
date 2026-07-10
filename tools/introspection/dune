@@ -1,6 +1,7 @@
 (executables
   (names        obus_dump obus_introspect)
   (public_names obus-dump obus-introspect)
+  (package      obus-lwt-unix)
   (modules      obus_dump obus_introspect)
-  (libraries    tools_util lwt obus.internals obus)
+  (libraries    tools_util lwt obus.internals obus obus.unix)
   (preprocess   (pps lwt_ppx)))

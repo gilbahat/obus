@@ -1,8 +1,9 @@
 (library
  (name obus_policy_kit)
  (public_name obus.policykit)
+ (package obus-lwt-unix)
  (wrapped false)
- (libraries lwt obus)
+ (libraries lwt obus obus.unix)
  (preprocess (pps lwt_ppx ppx_obus)))
 
 (rule

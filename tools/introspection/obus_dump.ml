@@ -26,7 +26,7 @@ let launch pp what_bus laddresses =
     OBus_server.make_lowlevel ~capabilities:[`Unix_fd]
       (fun server transport ->
          ignore begin
-           let%lwt (_, bus) = OBus_transport.of_addresses ~capabilities:[`Unix_fd] addresses in
+           let%lwt (_, bus) = OBus_transport_unix.of_addresses ~capabilities:[`Unix_fd] addresses in
            Lwt.choose [loop pp "message received" what_bus bus transport;
                        loop pp "sending message" what_bus transport bus]
          end)
@@ -56,7 +56,7 @@ let () =
   let pp = Format.formatter_of_out_channel oc in
 
   Lwt_main.run begin
-    let%lwt () = launch pp "session" OBus_address.session <&> launch pp "system" OBus_address.system in
+    let%lwt () = launch pp "session" OBus_address_unix.session <&> launch pp "system" OBus_address.system in
     let%lwt _ = Lwt_unix.waitpid [] (Unix.create_process cmd (Array.of_list cmd_args) Unix.stdin Unix.stdout Unix.stderr) in
     close_out oc;
     Lwt.return ()

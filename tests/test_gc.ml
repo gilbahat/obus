@@ -15,7 +15,7 @@ let finalise _  = ok := true
 
 let test () =
   let success = true in
-  let%lwt bus = OBus_bus.session () in
+  let%lwt bus = OBus_bus_unix.session () in
 
   let%lwt () = print "safety check: " in
   let event = ref 0 in

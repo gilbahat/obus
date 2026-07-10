@@ -1,8 +1,9 @@
 (library
  (name obus_upower)
  (public_name obus.upower)
+ (package obus-lwt-unix)
  (wrapped false)
- (libraries lwt obus)
+ (libraries lwt obus obus.unix)
  (preprocess (pps lwt_ppx ppx_obus)))
 
 (rule

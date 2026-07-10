@@ -79,7 +79,7 @@ let server_path = ["org"; "freedesktop"; "Notifications"]
 open Notification_interfaces.Org_freedesktop_Notifications
 
 let proxy = lazy(
-  let%lwt bus = OBus_bus.session () in
+  let%lwt bus = OBus_bus_unix.session () in
   return (OBus_proxy.make (OBus_peer.make bus server_name) server_path)
 )
 
@@ -148,7 +148,7 @@ let remove_notification peer id notif =
   r :=  Id_map.remove id !r
 
 let init_callbacks = lazy(
-  let%lwt bus = OBus_bus.session () in
+  let%lwt bus = OBus_bus_unix.session () in
 
   (* Create an anymous proxy for connecting signals, so we will
      receive signals comming from any daemon *)

@@ -18,7 +18,7 @@ let ping proxy msg =
   OBus_method.call m_Ping proxy msg
 
 let _ = Lwt_main.run begin
-  let%lwt bus = OBus_bus.session () in
+  let%lwt bus = OBus_bus_unix.session () in
 
   (* Create a proxy for the remote object *)
   let proxy = OBus_proxy.make (OBus_peer.make bus "org.plop") ["plip"] in

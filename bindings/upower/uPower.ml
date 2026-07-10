@@ -14,7 +14,7 @@ include OBus_peer.Private
 let general_error = "org.freedesktop.UPower.GeneralError"
 
 let daemon () =
-  let%lwt bus = OBus_bus.system () in
+  let%lwt bus = OBus_bus_unix.system () in
   return (OBus_peer.make bus "org.freedesktop.UPower")
 
 open UPower_interfaces.Org_freedesktop_UPower

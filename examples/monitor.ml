@@ -28,7 +28,7 @@ let add_filter what_bus get_bus =
     [ `Method_call; `Method_return; `Error; `Signal ]
 
 let () = Lwt_main.run begin
-  let%lwt () = add_filter "session" OBus_bus.session <&> add_filter "system" OBus_bus.system in
+  let%lwt () = add_filter "session" OBus_bus_unix.session <&> add_filter "system" OBus_bus_unix.system in
   let%lwt () = Lwt_io.printlf "type Ctrl+C to stop" in
   fst (wait ())
 end
