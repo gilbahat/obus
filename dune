@@ -1,4 +1,4 @@
-(dirs src tools docs utils test_mirage_connect)
+(dirs src tools docs utils test_mirage_connect bindings examples tests)
 
 (env
  (release

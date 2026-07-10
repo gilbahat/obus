@@ -5,6 +5,7 @@
   (public_names obus-gen-interface obus-gen-client
                 obus-gen-server obus-idl2xml
                 obus-xml2idl)
+  (package      obus)
   (modules      obus_gen_interface obus_gen_client
                 obus_gen_server obus_idl2xml
                 obus_xml2idl)

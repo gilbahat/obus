@@ -121,7 +121,7 @@ let basic count deep = function
   | T.String -> count + 1, V.String(string 100)
   | T.Signature -> count + 1, V.Signature(snd (tsequence 0 0))
   | T.Object_path -> count + 1, V.Object_path(path ())
-  | T.Unix_fd -> count + 1, V.Unix_fd Unix.stdin
+  | T.Unix_fd -> count + 1, V.Unix_fd 0
 
 let rec single count deep = function
   | T.Basic t ->

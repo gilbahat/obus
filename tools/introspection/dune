@@ -3,5 +3,5 @@
   (public_names obus-dump obus-introspect)
   (package      obus-lwt-unix)
   (modules      obus_dump obus_introspect)
-  (libraries    tools_util lwt obus.internals obus obus.unix)
+  (libraries    tools_util lwt obus.internals obus obus-lwt-unix)
   (preprocess   (pps lwt_ppx)))

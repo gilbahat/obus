@@ -10,6 +10,8 @@
 open Lwt_react
 open Lwt.Infix
 
+type t = OBus_connection.t
+
 let section = Lwt_log.Section.make "obus(bus)"
 
 let exit_on_disconnect exn =

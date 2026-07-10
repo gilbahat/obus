@@ -1,7 +1,6 @@
 (library
  (name obus_unix)
- (public_name obus.unix)
- (package obus-lwt-unix)
+ (public_name obus-lwt-unix)
  (synopsis "OBus Lwt/Unix transport — Unix sockets, server, session/system bus")
  (wrapped false)
  (libraries obus obus.internals lwt.unix lwt_log lwt_react unix)

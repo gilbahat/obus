@@ -1,9 +1,8 @@
 (library
  (name obus_notification)
- (public_name obus.notification)
- (package obus-lwt-unix)
+ (public_name obus-lwt-unix.notification)
  (wrapped false)
- (libraries lwt obus obus.unix)
+ (libraries lwt obus obus-lwt-unix)
  (preprocess (pps lwt_ppx ppx_obus)))
 
 (rule

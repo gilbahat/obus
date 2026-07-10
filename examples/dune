@@ -6,13 +6,13 @@
 (executables
  (names      bus_functions hello list_services monitor)
  (modules    bus_functions hello list_services monitor)
- (libraries  lwt obus obus.unix)
+ (libraries  lwt obus obus-lwt-unix)
  (preprocess (pps lwt_ppx)))
 
 (executables
  (names      eject signals)
  (modules    eject signals)
- (libraries  lwt obus obus.unix obus_hal)
+ (libraries  lwt obus obus-lwt-unix obus_hal)
  (preprocess (pps lwt_ppx)))
 
 (executable
@@ -36,7 +36,7 @@
 (executables
  (names      ping pong)
  (modules    ping pong ping_pong)
- (libraries  lwt obus obus.unix)
+ (libraries  lwt obus obus-lwt-unix)
  (preprocess (pps lwt_ppx)))
 
 (rule

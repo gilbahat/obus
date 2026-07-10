@@ -1,9 +1,8 @@
 (library
  (name obus_network_manager)
- (public_name obus.network_manager)
- (package obus-lwt-unix)
+ (public_name obus-lwt-unix.network_manager)
  (wrapped false)
- (libraries lwt lwt_log obus obus.unix)
+ (libraries lwt lwt_log obus obus-lwt-unix)
  (preprocess (pps lwt_ppx ppx_obus)))
 
 (rule

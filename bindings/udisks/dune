@@ -1,9 +1,8 @@
 (library
  (name obus_udisks)
- (public_name obus.udisks)
- (package obus-lwt-unix)
+ (public_name obus-lwt-unix.udisks)
  (wrapped false)
- (libraries lwt obus obus.unix)
+ (libraries lwt obus obus-lwt-unix)
  (preprocess (pps lwt_ppx ppx_obus)))
 
 (rule

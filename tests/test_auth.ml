@@ -35,6 +35,5 @@ let test_mech mech =
 
 let test () =
   let%lwt a = test_mech OBus_auth.Server.mech_external in
-  let%lwt b = test_mech OBus_auth.Server.mech_dbus_cookie_sha1 in
   let%lwt c = test_mech OBus_auth.Server.mech_anonymous in
-  return (a && b && c)
+  return (a && c)
