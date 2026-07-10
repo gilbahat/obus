@@ -7,6 +7,7 @@
  * This file is a part of obus, an ocaml implementation of D-Bus.
  *)
 
+module Lwt_log = Lwt_log_core
 let section = Lwt_log.Section.make "obus(value)"
 
 open Format
@@ -366,7 +367,7 @@ struct
     | String of string
     | Signature of signature
     | Object_path of OBus_path.t
-    | Unix_fd of Unix.file_descr
+    | Unix_fd of int
 
   type single =
     | Basic of basic
@@ -516,7 +517,7 @@ struct
      | FDs closing |
      +---------------------------------------------------------------+ *)
 
-  module FD_set = Set.Make(struct type t = Unix.file_descr let compare = compare end)
+  module FD_set = Set.Make(struct type t = int let compare = compare end)
 
   let basic_contains_fds = function
     | T.Unix_fd -> true
@@ -558,36 +559,19 @@ struct
   and sequence_collect_fds acc l =
     List.fold_left single_collect_fds acc l
 
-  let close_fds collect_fds value =
-    Lwt_list.iter_p
-      (fun fd ->
-         try
-           Lwt_unix.close (Lwt_unix.of_unix_file_descr ~set_flags:false fd)
-         with Unix.Unix_error(err, _, _) ->
-           Lwt_log.error_f ~section "failed to close file descriptor: %s" (Unix.error_message err))
-      (FD_set.elements (collect_fds FD_set.empty value))
-
-  let basic_close = close_fds basic_collect_fds
-  let single_close = close_fds single_collect_fds
-  let sequence_close = close_fds sequence_collect_fds
+  let basic_close (_ : basic) = Lwt.return ()
+  let single_close (_ : single) = Lwt.return ()
+  let sequence_close (_ : sequence) = Lwt.return ()
 
   (* +---------------------------------------------------------------+
      | FDs duplicating |
      +---------------------------------------------------------------+ *)
 
-  module FD_map = Map.Make(struct type t = Unix.file_descr let compare = compare end)
+  module FD_map = Map.Make(struct type t = int let compare = compare end)
 
-  let basic_dup map = function
-    | Unix_fd fd -> begin
-        try
-          Unix_fd(FD_map.find fd !map)
-        with Not_found ->
-          let fd' = Unix.dup fd in
-          map := FD_map.add fd fd' !map;
-          Unix_fd fd
-      end
-    | value ->
-        value
+  let basic_dup _map = function
+    | Unix_fd fd -> Unix_fd fd
+    | value -> value
 
   let rec single_dup map = function
     | Basic x ->

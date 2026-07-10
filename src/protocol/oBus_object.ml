@@ -9,6 +9,7 @@
 
 open Lwt_react
 
+module Lwt_log = Lwt_log_core
 let section = Lwt_log.Section.make "obus(object)"
 
 (* +-----------------------------------------------------------------+

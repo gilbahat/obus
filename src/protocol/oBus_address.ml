@@ -7,6 +7,7 @@
  * This file is a part of obus, an ocaml implementation of D-Bus.
  *)
 
+module Lwt_log = Lwt_log_core
 let section = Lwt_log.Section.make "obus(address)"
 
 (* +-----------------------------------------------------------------+
@@ -100,36 +101,11 @@ let system = lazy(
         Lwt.return default_system
 )
 
-let xdg_fallback_session () =
-  match try Some (Sys.getenv xdg_runtime_dir_variable) with | Not_found -> None with
-  | None ->
-     Lwt.return_none
-  | Some path ->
-     Lwt.catch (fun () ->
-         let sock_path = Filename.concat path "bus" in
-         let%lwt stat = Lwt_unix.stat sock_path in
-         let uid = Unix.getuid () in
-         if stat.st_uid = uid && stat.st_kind = Lwt_unix.S_SOCK
-         then Lwt.return_some [{ name = "unix"; args = [("path", sock_path)] }]
-         else Lwt.return_none)
-       (fun _ -> Lwt.return_none)
-
 let session = lazy(
   match try Some(Sys.getenv session_bus_variable) with Not_found -> None with
     | Some line ->
         Lwt.return (of_string line)
     | None ->
-        let%lwt () = Lwt_log.info_f ~section "environment variable %s not found, trying XDG_RUNTIME_DIR/bus" session_bus_variable in
-        let%lwt xdg_session = xdg_fallback_session () in
-        match xdg_session with
-        | Some session ->
-           Lwt.return session
-        | None ->
-           let%lwt () = Lwt_log.info_f ~section "failed to connect to %s/bus, trying to get session bus address from launchd" xdg_runtime_dir_variable in
-           try%lwt
-             let%lwt path = Lwt_process.pread_line ("launchctl", [|"launchctl"; "getenv"; "DBUS_LAUNCHD_SESSION_BUS_SOCKET"|]) in
-             Lwt.return [{ name = "unix"; args = [("path", path)] }]
-           with exn ->
-             let%lwt () = Lwt_log.info_f ~exn ~section "failed to get session bus address from launchd, using internal default" in
-             Lwt.return default_session
+        let%lwt () = Lwt_log.info_f ~section "environment variable %s not found, using internal default" session_bus_variable in
+        Lwt.return default_session
 )

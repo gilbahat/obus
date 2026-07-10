@@ -22,4 +22,6 @@ depends: [
   "lwt_log"
   "lwt_react"
   "ppxlib" {>= "0.26.0"}
+  "cstruct" {>= "6.2.0"}
+  "mirage-crypto-rng" {>= "0.11.3"}
 ]

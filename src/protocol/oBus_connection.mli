@@ -31,14 +31,6 @@ val compare : t -> t -> int
     Otherwise you should use [OBus_bus] or immediately call
     [OBus_bus.register_connection] after the creation. *)
 
-val of_addresses : ?switch : Lwt_switch.t -> ?shared : bool -> OBus_address.t list -> t Lwt.t
-  (** [of_addresses ?switch ?shared addresses] try to get a working
-      D-Bus connection from a list of addresses. The server must be
-      accessible from at least one of these addresses.
-
-      If [shared] is true and a connection to the same server is
-      already open, then it is used instead of [transport]. This is
-      the default behaviour. *)
 
 val loopback : unit -> t
   (** Create a connection with a loopback transport *)

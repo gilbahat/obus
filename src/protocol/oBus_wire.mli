@@ -26,49 +26,27 @@ exception Protocol_error of string
       - a boolean value is other than 0 or 1
       - ... *)
 
-val read_message : Lwt_io.input_channel -> OBus_message.t Lwt.t
-  (** [read_message ic] deserializes a message from a channel. It
-      fails if the message contains file descriptors. *)
+type byte_order = Little_endian | Big_endian
 
-val write_message : Lwt_io.output_channel -> ?byte_order : Lwt_io.byte_order -> OBus_message.t -> unit Lwt.t
-  (** [write_message oc ?byte_order message] serializes a message to a
-      channel. It fails if the message contains file descriptors. *)
+val system_byte_order : byte_order
+  (** Native byte order of the host. *)
 
-val message_of_string : string -> Unix.file_descr array -> OBus_message.t
-  (** [message_of_string buf fds] returns a message from a
-      string. [fds] is used to resolv file descriptors the message may
-      contains. *)
+val read_message : (int -> string Lwt.t) -> OBus_message.t Lwt.t
+  (** [read_message recv] deserializes a message. [recv n] must read
+      exactly [n] bytes and return them as a string, or raise
+      [End_of_file] if the connection closes. *)
 
-val string_of_message : ?byte_order : Lwt_io.byte_order -> OBus_message.t -> string * Unix.file_descr array
-  (** Marshal a message into a string. Returns also the list of file
-      descriptors that must be sent with the message. *)
+val write_message : (string -> unit Lwt.t) -> ?byte_order:byte_order -> OBus_message.t -> unit Lwt.t
+  (** [write_message send ?byte_order msg] serializes [msg] and passes
+      the result to [send]. Fails if the message contains file
+      descriptors (only possible over Unix sockets, never over TCP). *)
 
-type reader
-  (** A reader which support unix fd passing *)
+val message_of_string : string -> int array -> OBus_message.t
+  (** [message_of_string buf fds] returns a message from a string. [fds]
+      is used to resolve file descriptors the message may contain. Over
+      TCP this array is always empty. *)
 
-val reader : Lwt_unix.file_descr -> reader
-  (** [reader unix_socket] creates a reader from a unix socket *)
-
-val read_message_with_fds : reader -> OBus_message.t Lwt.t
-  (** Read a message with its file descriptors from the given
-      reader *)
-
-val close_reader : reader -> unit Lwt.t
-  (** [close_reader reader] closes the given reader.
-
-      Note: this does not close the underlying file descriptor. *)
-
-type writer
-  (** A writer which support unix fd passing *)
-
-val writer : Lwt_unix.file_descr -> writer
-  (** [writer unix_socket] creates a writer from a unix socket *)
-
-val write_message_with_fds : writer -> ?byte_order : Lwt_io.byte_order -> OBus_message.t -> unit Lwt.t
-  (** Write a message with its file descriptors on the given writer *)
-
-val close_writer : writer -> unit Lwt.t
-  (** [close_writer writer] closes the given writer.
-
-      Note: this does not close the underlying file descriptor. *)
+val string_of_message : ?byte_order:byte_order -> OBus_message.t -> string * int array
+  (** Marshal a message into a string. Returns also the (always-empty
+      over TCP) array of file descriptors that would need to be sent. *)
 

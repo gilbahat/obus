@@ -7,6 +7,7 @@
  * This file is a part of obus, an ocaml implementation of D-Bus.
  *)
 
+module Lwt_log = Lwt_log_core
 let section = Lwt_log.Section.make "obus(auth)"
 
 open Printf
@@ -60,142 +61,6 @@ type server_command =
   | Server_agree_unix_fd
 
 (* +-----------------------------------------------------------------+
-   | Keyring for the SHA-1 method                                    |
-   +-----------------------------------------------------------------+ *)
-
-module Cookie =
-struct
-  type t = {
-    id : int32;
-    time : int64;
-    cookie : string;
-  }
-
-  let id c = c.id
-  let time c = c.time
-  let cookie c = c.cookie
-end
-
-module Keyring : sig
-
-  type context = string
-      (** A context for the SHA-1 method *)
-
-  val load : context -> Cookie.t list Lwt.t
-    (** [load context] load all cookies for context [context] *)
-
-  val save : context -> Cookie.t list -> unit Lwt.t
-    (** [save context cookies] save all cookies with context
-        [context] *)
-end = struct
-
-  type context = string
-
-  let keyring_directory = lazy(
-    let%lwt homedir = Lazy.force OBus_util.homedir in
-    Lwt.return (Filename.concat homedir ".dbus-keyrings")
-  )
-
-  let keyring_file_name context =
-    let%lwt dir = Lazy.force keyring_directory in
-    Lwt.return (Filename.concat dir context)
-
-  let parse_line line =
-    Scanf.sscanf line "%ld %Ld %[a-fA-F0-9]"
-      (fun id time cookie -> { Cookie.id = id;
-                               Cookie.time = time;
-                               Cookie.cookie = cookie })
-
-  let print_line cookie =
-    sprintf  "%ld %Ld %s" (Cookie.id cookie) (Cookie.time cookie) (Cookie.cookie cookie)
-
-  let load context =
-    let%lwt fname = keyring_file_name context in
-    if Sys.file_exists fname then
-      try%lwt
-        Lwt_stream.get_while (fun _ -> true) (Lwt_stream.map parse_line (Lwt_io.lines_of_file fname))
-      with exn ->
-        let%lwt fname = keyring_file_name context in
-        let%lwt () = Lwt_log.error_f ~exn ~section "failed to load cookie file %s" fname in
-        Lwt.fail exn
-    else
-      Lwt.return []
-
-  let lock_file fname =
-    let really_lock () =
-      Lwt_unix.openfile fname
-        [Unix.O_WRONLY;
-         Unix.O_EXCL;
-         Unix.O_CREAT] 0o600
-      >>= Lwt_unix.close
-    in
-    let rec aux = function
-      | 0 ->
-          let%lwt () =
-            try%lwt
-              let%lwt () = Lwt_unix.unlink fname in
-              Lwt_log.info_f ~section "stale lock file %s removed" fname
-            with Unix.Unix_error(error, _, _) as exn ->
-              let%lwt () = Lwt_log.error_f ~section "failed to remove stale lock file %s: %s" fname (Unix.error_message error) in
-              Lwt.fail exn
-          in
-          (try%lwt
-             really_lock ()
-           with Unix.Unix_error(error, _, _) as exn ->
-             let%lwt () = Lwt_log.error_f ~section "failed to lock file %s after removing it: %s" fname (Unix.error_message error) in
-             Lwt.fail exn)
-      | n ->
-          try%lwt
-            really_lock ()
-          with exn ->
-            let%lwt () = Lwt_log.info_f ~section "waiting for lock file (%d) %s" n fname in
-            let%lwt () = Lwt_unix.sleep 0.250 in
-            aux (n - 1)
-    in
-    aux 32
-
-  let unlock_file fname =
-    try%lwt
-      Lwt_unix.unlink fname
-    with Unix.Unix_error(error, _, _) as exn ->
-      let%lwt () = Lwt_log.error_f ~section "failed to unlink file %s: %s" fname (Unix.error_message error) in
-      Lwt.fail exn
-
-  let save context cookies =
-    let%lwt fname = keyring_file_name context in
-    let tmp_fname = fname ^ "." ^ hex_encode (OBus_util.random_string 8) in
-    let lock_fname = fname ^ ".lock" in
-    let%lwt dir = Lazy.force keyring_directory in
-    let%lwt () =
-      (* Check that the keyring directory exists, or create it *)
-      if not (Sys.file_exists dir) then begin
-        try%lwt
-          Lwt_unix.mkdir dir 0o700
-        with Unix.Unix_error(error, _, _) as exn ->
-          let%lwt () = Lwt_log.error_f ~section "failed to create directory %s with permissions 0600: %s" dir (Unix.error_message error) in
-          Lwt.fail exn
-      end else
-        Lwt.return ()
-    in
-    let%lwt () = lock_file lock_fname in begin
-      let%lwt () =
-        try%lwt
-          Lwt_io.lines_to_file tmp_fname (Lwt_stream.map print_line (Lwt_stream.of_list cookies))
-        with exn ->
-          let%lwt () = Lwt_log.error_f ~exn ~section "unable to write temporary keyring file %s" tmp_fname in
-          Lwt.fail exn
-      in
-      try
-        Lwt_unix.rename tmp_fname fname
-      with Unix.Unix_error(error, _, _) as exn ->
-        let%lwt () = Lwt_log.error_f ~section "unable to rename file %s to %s: %s" tmp_fname fname (Unix.error_message error) in
-        Lwt.fail exn
-    end
-    [%lwt.finally 
-      unlock_file lock_fname]
-end
-
-(* +-----------------------------------------------------------------+
    | Communication                                                   |
    +-----------------------------------------------------------------+ *)
 
@@ -225,7 +90,7 @@ let make_stream ~recv ~send = {
                   Lwt.fail (Auth_failure("output: " ^ Printexc.to_string exn)));
 }
 
-let stream_of_channels (ic, oc) =
+let stream_of_fns ~recv_byte ~send =
   make_stream
     ~recv:(fun () ->
              let buf = Buffer.create 42 in
@@ -233,56 +98,15 @@ let stream_of_channels (ic, oc) =
                if Buffer.length buf > max_line_length then
                  Lwt.fail (Auth_failure "input: line too long")
                else
-                 Lwt_io.read_char_opt ic >>= function
-                   | None ->
-                       Lwt.fail (Auth_failure "input: premature end of input")
-                   | Some ch ->
-                       Buffer.add_char buf ch;
-                       if last = '\r' && ch = '\n' then
-                         Lwt.return (Buffer.contents buf)
-                       else
-                         loop ch
+                 recv_byte () >>= fun ch ->
+                 Buffer.add_char buf ch;
+                 if last = '\r' && ch = '\n' then
+                   Lwt.return (Buffer.contents buf)
+                 else
+                   loop ch
              in
              loop '\x00')
-    ~send:(fun line ->
-             let%lwt () = Lwt_io.write oc line in
-             Lwt_io.flush oc)
-
-let stream_of_fd fd =
-  make_stream
-    ~recv:(fun () ->
-             let buf = Buffer.create 42 and tmp = Bytes.create 1 in
-             let rec loop last =
-               if Buffer.length buf > max_line_length then
-                 Lwt.fail (Auth_failure "input: line too long")
-               else
-                 Lwt_unix.read fd tmp 0 1 >>= function
-                   | 0 ->
-                       Lwt.fail (Auth_failure "input: premature end of input")
-                   | 1 ->
-                       let ch = Bytes.get tmp 0 in
-                       Buffer.add_char buf ch;
-                       if last = '\r' && ch = '\n' then
-                         Lwt.return (Buffer.contents buf)
-                       else
-                         loop ch
-                   | n ->
-                       assert false
-             in
-             loop '\x00')
-    ~send:(fun line ->
-             let rec loop ofs len =
-               if len = 0 then
-                 Lwt.return ()
-               else
-                 Lwt_unix.write_string fd line ofs len >>= function
-                   | 0 ->
-                       Lwt.fail (Auth_failure "output: zero byte written")
-                   | n ->
-                       assert (n > 0 && n <= len);
-                       loop (ofs + n) (len - n)
-             in
-             loop 0 (String.length line))
+    ~send
 
 let send_line mode stream line =
   ignore (Lwt_log.debug_f ~section "%s: sending: %S" mode line);
@@ -429,9 +253,9 @@ struct
      | Predefined client mechanisms                                  |
      +---------------------------------------------------------------+ *)
 
-  class mech_external_handler = object
+  class mech_external_handler uid = object
     inherit mechanism_handler
-    method init = Lwt.return (Mech_ok(string_of_int (Unix.getuid ())))
+    method init = Lwt.return (Mech_ok uid)
   end
 
   class mech_anonymous_handler = object
@@ -439,41 +263,37 @@ struct
     method init = Lwt.return (Mech_ok("obus " ^ OBus_info.version))
   end
 
-  class mech_dbus_cookie_sha1_handler = object
-    method init = Lwt.return (Mech_continue(string_of_int (Unix.getuid ())))
+  class mech_dbus_cookie_sha1_handler ~uid ~cookie = object
+    inherit mechanism_handler
+    method init = Lwt.return (Mech_continue uid)
     method data chal =
       let%lwt () = Lwt_log.debug_f ~section "client: dbus_cookie_sha1: chal: %s" chal in
-      let context, id, chal = Scanf.sscanf chal "%[^/\\ \n\r.] %ld %[a-fA-F0-9]%!" (fun context id chal -> (context, id, chal)) in
-      let%lwt keyring = Keyring.load context in
-      let cookie =
-        try
-          List.find (fun cookie -> cookie.Cookie.id = id) keyring
-        with Not_found ->
-          ksprintf failwith "cookie %ld not found in context %S" id context
+      let _context, _id, server_rand =
+        Scanf.sscanf chal "%[^/\\ \n\r.] %ld %[a-fA-F0-9]%!"
+          (fun context id r -> (context, id, r))
       in
-      let rand = hex_encode (OBus_util.random_string 16) in
-      let resp = sprintf "%s %s" rand (hex_encode (OBus_util.sha_1 (sprintf "%s:%s:%s" chal rand cookie.Cookie.cookie))) in
+      let client_rand = hex_encode (OBus_util.random_string 16) in
+      let resp = sprintf "%s %s" client_rand
+        (hex_encode (OBus_util.sha_1 (sprintf "%s:%s:%s" server_rand client_rand cookie))) in
       let%lwt () = Lwt_log.debug_f ~section "client: dbus_cookie_sha1: resp: %s" resp in
       Lwt.return (Mech_ok resp)
     method abort = ()
   end
 
-  let mech_external = {
+  let mech_external ?(uid="") () = {
     mech_name = "EXTERNAL";
-    mech_exec = (fun () -> new mech_external_handler);
+    mech_exec = (fun () -> new mech_external_handler uid);
   }
   let mech_anonymous = {
     mech_name = "ANONYMOUS";
     mech_exec = (fun () -> new mech_anonymous_handler);
   }
-  let mech_dbus_cookie_sha1 = {
+  let mech_dbus_cookie_sha1 ?(uid="") ~cookie () = {
     mech_name = "DBUS_COOKIE_SHA1";
-    mech_exec = (fun () -> new mech_dbus_cookie_sha1_handler);
+    mech_exec = (fun () -> new mech_dbus_cookie_sha1_handler ~uid ~cookie);
   }
 
-  let default_mechanisms = [mech_external;
-                            mech_dbus_cookie_sha1;
-                            mech_anonymous]
+  let default_mechanisms = [mech_external (); mech_anonymous]
 
   (* +---------------------------------------------------------------+
      | Client-side protocol                                          |
@@ -657,10 +477,9 @@ struct
     method data _ = Lwt.return (Mech_ok None)
   end
 
-  class mech_dbus_cookie_sha1_handler = object
+  class mech_dbus_cookie_sha1_handler ~context ~id ~cookie = object
     inherit mechanism_handler
 
-    val context = "org_freedesktop_general"
     val mutable state = `State1
     val mutable user_id = None
 
@@ -670,22 +489,6 @@ struct
         match state with
           | `State1 ->
               user_id <- (try Some(int_of_string resp) with _ -> None);
-              let%lwt keyring = Keyring.load context in
-              let cur_time = Int64.of_float (Unix.time ()) in
-              (* Filter old and future keys *)
-              let keyring = List.filter (fun { Cookie.time = time } -> time <= cur_time && Int64.sub cur_time time <= 300L) keyring in
-              (* Find a working cookie *)
-              let%lwt id, cookie = match keyring with
-                | { Cookie.id = id; Cookie.cookie = cookie } :: _ ->
-                    (* There is still valid cookies, just choose one *)
-                    Lwt.return (id, cookie)
-                | [] ->
-                    (* No one left, generate a new one *)
-                    let id = Int32.abs (OBus_util.random_int32 ()) in
-                    let cookie = hex_encode (OBus_util.random_string 24) in
-                    let%lwt () = Keyring.save context [{ Cookie.id = id; Cookie.time = cur_time; Cookie.cookie = cookie }] in
-                    Lwt.return (id, cookie)
-              in
               let rand = hex_encode (OBus_util.random_string 16) in
               let chal = sprintf "%s %ld %s" context id rand in
               let%lwt () = Lwt_log.debug_f ~section "server: dbus_cookie_sha1: chal: %s" chal in
@@ -708,20 +511,18 @@ struct
 
   let mech_anonymous = {
     mech_name = "ANONYMOUS";
-    mech_exec = (fun uid -> new mech_anonymous_handler);
+    mech_exec = (fun _uid -> new mech_anonymous_handler);
   }
   let mech_external = {
     mech_name = "EXTERNAL";
     mech_exec = (fun uid -> new mech_external_handler uid);
   }
-  let mech_dbus_cookie_sha1 = {
+  let mech_dbus_cookie_sha1 ?(context="org_freedesktop_general") ~id ~cookie () = {
     mech_name = "DBUS_COOKIE_SHA1";
-    mech_exec = (fun uid -> new mech_dbus_cookie_sha1_handler);
+    mech_exec = (fun _uid -> new mech_dbus_cookie_sha1_handler ~context ~id ~cookie);
   }
 
-  let default_mechanisms = [mech_external;
-                            mech_dbus_cookie_sha1;
-                            mech_anonymous]
+  let default_mechanisms = [mech_external; mech_anonymous]
 
   (* +---------------------------------------------------------------+
      | Server-side protocol                                          |

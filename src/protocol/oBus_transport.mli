@@ -9,6 +9,19 @@
 
 (** Low-level transporting of messages *)
 
+(** A raw bidirectional byte stream — the caller provides this from
+    whatever transport substrate is available (Mirage TCP flow, Unix
+    socket, etc.). *)
+type connection = {
+  read : int -> string Lwt.t;
+  (** [read n] reads exactly [n] bytes; raises [End_of_file] when the
+      connection closes before [n] bytes are available. *)
+  write : string -> unit Lwt.t;
+  (** [write s] writes the entire string [s]. *)
+  close : unit -> unit Lwt.t;
+  (** [close ()] closes the connection. *)
+}
+
 type t
   (** Type of message transport *)
 
@@ -30,50 +43,38 @@ val make :
   send : (OBus_message.t -> unit Lwt.t) ->
   ?capabilities : OBus_auth.capability list ->
   shutdown : (unit -> unit Lwt.t) -> unit -> t
-  (** [make ?switch ~recv ~send ~support_unxi_fd ~shutdown ()] creates
-      a new transport from the given functions. @param capabilities
-      defaults to [[]].
-
-      Notes:
-      - message reading/writing are serialized by obus, so there is no
-        need to handle concurrent access to transport
-  *)
+  (** [make ?switch ~recv ~send ~shutdown ()] creates a new transport
+      from the given functions. *)
 
 val loopback : unit -> t
-  (** Loopback transport, each message sent is received on the same
+  (** Loopback transport: each message sent is received on the same
       transport *)
 
-val socket : ?switch : Lwt_switch.t -> ?capabilities : OBus_auth.capability list ->  Lwt_unix.file_descr -> t
-  (** [socket ?switch ?capabilities socket] creates a socket
-      transport.
+val of_connection :
+  ?switch : Lwt_switch.t ->
+  ?capabilities : OBus_auth.capability list ->
+  connection ->
+  t
+  (** [of_connection ?switch ?capabilities conn] wraps an already-
+      authenticated byte-stream connection as a message transport.
+      The caller is responsible for having completed D-Bus
+      authentication before calling this. *)
 
-      @param capabilities defaults to [[]]. For unix sockets, the
-      [`Unix_fd] capability is accepted. *)
-
-val of_addresses :
+val connect :
   ?switch : Lwt_switch.t ->
   ?capabilities : OBus_auth.capability list ->
   ?mechanisms : OBus_auth.Client.mechanism list ->
-  OBus_address.t list ->
+  connection ->
   (OBus_address.guid * t) Lwt.t
-    (** [of_addresses ?switch ?capabilities ?mechanisms addresses] tries to:
+  (** [connect ?switch ?capabilities ?mechanisms conn] sends the D-Bus
+      initial null byte, performs client authentication using
+      [mechanisms] (defaults to
+      {!OBus_auth.Client.default_mechanisms}), and returns the server
+      GUID and a ready-to-use transport.
 
-        - connect to the server using one of the given given addresses,
-        - authenticate itself to the server using [mechanisms], which
-          defaults to {!OBus_auth.Client.default_mechanisms},
-        - negotiates [capabilities], which defaults to
-          {!OBus_auth.capabilities}
-
-        If all succeeded, it returns the server address guid and the
-        newly created transport, which is ready to send and receive
-        messages.
-
-        Note about errors:
-        - if one of the addresses is not valid, or [addresses = []],
-          it raises [Invalid_argument],
-        - if all connections failed, it raises the exception raised
-          by the try on first address, which is either a [Failure] or
-          a [Unix.Unix_error]
-        - if the authentication failed, a {!OBus_auth.Auth_error} is
-          raised
-    *)
+      On MirageOS, build [conn] from a Mirage TCP flow:
+      {[
+        let recv n = (* read exactly n bytes from flow *) in
+        let send s = (* write s to flow *) in
+        OBus_transport.connect { recv; send; close = ... } >>= ...
+      ]} *)

@@ -1,0 +1,4 @@
+(executable
+ (name test_connect)
+ (libraries obus lwt.unix mirage-crypto-rng.unix)
+ (preprocess (pps lwt_ppx)))

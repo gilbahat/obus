@@ -7,8 +7,6 @@
  * This file is a part of obus, an ocaml implementation of D-Bus.
  *)
 
-let section = Lwt_log.Section.make "obus(util)"
-
 let rec assoc x = function
   | [] -> None
   | (k, v) :: _ when k = x -> Some(v)
@@ -84,37 +82,7 @@ let hex_decode hex =
   done;
   Bytes.unsafe_to_string str
 
-let homedir = lazy(
-  try
-    Lwt.return (Sys.getenv "HOME")
-  with Not_found ->
-    let%lwt pwd = Lwt_unix.getpwuid (Unix.getuid ()) in
-    Lwt.return pwd.Unix.pw_dir
-)
-
-let init_pseudo = Lazy.from_fun Random.self_init
-
-let fill_pseudo buffer pos len =
-  ignore (Lwt_log.warning ~section "using pseudo-random generator");
-  Lazy.force init_pseudo;
-  for i = pos to pos + len - 1 do
-    Bytes.unsafe_set buffer i (char_of_int (Random.int 256))
-  done
-
-let fill_random buffer pos len =
-  try
-    let ic = open_in "/dev/urandom" in
-    let n = input ic buffer pos len in
-    if n < len then fill_pseudo buffer (pos + n) (len - n);
-    close_in ic
-  with exn ->
-    ignore (Lwt_log.warning_f ~exn ~section "failed to get random data from /dev/urandom");
-    fill_pseudo buffer pos len
-
-let random_string n =
-  let str = Bytes.create n in
-  fill_random str 0 n;
-  Bytes.unsafe_to_string str
+let random_string n = Mirage_crypto_rng.generate n
 
 let random_int32 () =
   let r = random_string 4 in

@@ -7,6 +7,7 @@
  * This file is a part of obus, an ocaml implementation of D-Bus.
  *)
 
+module Lwt_log = Lwt_log_core
 let section = Lwt_log.Section.make "obus(property)"
 
 open Lwt.Infix

@@ -7,6 +7,7 @@
  * This file is a part of obus, an ocaml implementation of D-Bus.
  *)
 
+module Lwt_log = Lwt_log_core
 let section = Lwt_log.Section.make "obus(connection)"
 
 open Lwt_react
@@ -548,29 +549,6 @@ let of_transport ?switch ?guid ?(up=true) transport =
               guid_connection_map := Guid_map.add guid connection !guid_connection_map;
               connection
 
-(* Capabilities turned on by default: *)
-let capabilities = [`Unix_fd]
-
-let of_addresses ?switch ?(shared=true) addresses =
-  Lwt_switch.check switch;
-  match shared with
-    | false ->
-        let%lwt guid, transport = OBus_transport.of_addresses ~capabilities addresses in
-        Lwt.return (of_transport ?switch transport)
-    | true ->
-        (* Try to find a guid that we already have *)
-        let guids = OBus_util.filter_map OBus_address.guid addresses in
-        match OBus_util.find_map (fun guid -> try Some(Guid_map.find guid !guid_connection_map) with Not_found -> None) guids with
-          | Some connection ->
-              Lwt_switch.add_hook switch (fun () -> close connection);
-              Lwt.return connection
-          | None ->
-              (* We ask again a shared connection even if we know that
-                 there is no other connection to a server with the same
-                 guid, because during the authentication another
-                 thread can add a new connection. *)
-              let%lwt guid, transport = OBus_transport.of_addresses ~capabilities addresses in
-              Lwt.return (of_transport ?switch ~guid transport)
 
 let loopback () = of_transport (OBus_transport.loopback ())
 

@@ -1,7 +1,7 @@
 (library
  (name obus_internals)
  (public_name obus.internals)
- (libraries lwt.unix lwt_log xmlm)
+ (libraries lwt lwt_log.core mirage-crypto-rng xmlm)
  (wrapped false)
  (preprocess (pps lwt_ppx)))
 

@@ -11,26 +11,7 @@
 
 type t = OBus_connection.t
 
-(** {6 Well-known instances} *)
-
-val session : ?switch : Lwt_switch.t -> unit -> t Lwt.t
-  (** [session ?switch ()] returns a connection to the user session
-      message bus. Subsequent calls to {!session} will return the same
-      bus.  OBus will automatically exit the program when an error
-      happens on the session bus. You can change this behavior by
-      calling {!OBus_connection.set_on_disconnect}. *)
-
-val system : ?switch : Lwt_switch.t -> unit -> t Lwt.t
-  (** [system ?switch ()] returns a connection to the system message
-      bus. As for {!session}, subsequent calls to {!system} will
-      return the same bus. However, if the connection is closed or
-      crashes, {!system} will try to reopen it. *)
-
 (** {6 Creation} *)
-
-val of_addresses : ?switch : Lwt_switch.t -> OBus_address.t list -> t Lwt.t
-  (** Establish a connection with a message bus. The bus must be
-      accessible with at least one of the given addresses *)
 
 val register_connection : OBus_connection.t -> unit Lwt.t
   (** Register the given connection to a message bus. It has the side

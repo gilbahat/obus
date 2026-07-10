@@ -7,6 +7,7 @@
  * This file is a part of obus, an ocaml implementation of D-Bus.
  *)
 
+module Lwt_log = Lwt_log_core
 let section = Lwt_log.Section.make "obus(bus)"
 
 open Lwt_react
@@ -91,49 +92,6 @@ let register_connection connection =
     | Some _ ->
         Lwt.return ()
 
-let of_addresses ?switch addresses =
-  let%lwt bus = OBus_connection.of_addresses ?switch addresses ~shared:true in
-  let%lwt () = register_connection bus in
-  Lwt.return bus
-
-let session_bus = lazy(
-  try%lwt
-    let%lwt bus = Lazy.force OBus_address.session >>= of_addresses in
-    OBus_connection.set_on_disconnect bus exit_on_disconnect;
-    Lwt.return bus
-  with exn ->
-    let%lwt () = Lwt_log.warning ~exn ~section "Failed to open a connection to the session bus" in
-    Lwt.fail exn
-)
-
-let session ?switch () =
-  Lwt_switch.check switch;
-  let%lwt bus = Lazy.force session_bus in
-  let%lwt () = Lwt_switch.add_hook_or_exec switch (fun () -> OBus_connection.close bus) in
-  Lwt.return bus
-
-let system_bus_state = ref None
-let system_bus_mutex = Lwt_mutex.create ()
-
-let system ?switch () =
-  Lwt_switch.check switch;
-  let%lwt bus =
-    Lwt_mutex.with_lock system_bus_mutex
-      (fun () ->
-         match !system_bus_state with
-           | Some bus when S.value (OBus_connection.active bus) ->
-               Lwt.return bus
-           | _ ->
-               try%lwt
-                 let%lwt bus = Lazy.force OBus_address.system >>= of_addresses in
-                 system_bus_state := Some bus;
-                 Lwt.return bus
-               with exn ->
-                 let%lwt () = Lwt_log.warning ~exn ~section "Failed to open a connection to the system bus" in
-                 Lwt.fail exn)
-  in
-  let%lwt () = Lwt_switch.add_hook_or_exec switch (fun () -> OBus_connection.close bus) in
-  Lwt.return bus
 
 (* +-----------------------------------------------------------------+
    | Bindings to functions of the message bus                        |

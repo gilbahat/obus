@@ -46,18 +46,6 @@ val hex_decode : string -> string
       replaced by two hexadecimal characters which represent his ascii
       code *)
 
-val homedir : string Lwt.t Lazy.t
-  (** The home directory *)
-
-(** {6 Random number generation} *)
-
-(** All the following functions try to generate random numbers using
-    /dev/urandom and can fallback to pseudo-random generator *)
-
-val fill_random : bytes -> int -> int -> unit
-  (** [fill_random str ofs len] Fill the given string from [ofs] to
-      [ofs+len-1] with random bytes.  *)
-
 val random_string : int -> string
 val random_int : unit -> int
 val random_int32 : unit -> int32

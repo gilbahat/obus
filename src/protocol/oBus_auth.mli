@@ -35,14 +35,13 @@ val make_stream : recv : (unit -> string Lwt.t) -> send : (string -> unit Lwt.t)
       @param recv must read a complete line, ending with ["\r\n"],
       @param send must send the given line. *)
 
-val stream_of_channels : Lwt_io.input_channel * Lwt_io.output_channel -> stream
-  (** Creates a stream from a pair of channels *)
-
-val stream_of_fd : Lwt_unix.file_descr -> stream
-  (** Creates a stream from a file descriptor. Note that the stream
-      created by this function is not really efficient because it has
-      to read characters one by one to ensure it does not consume too
-      much. *)
+val stream_of_fns :
+  recv_byte:(unit -> char Lwt.t) ->
+  send:(string -> unit Lwt.t) ->
+  stream
+  (** [stream_of_fns ~recv_byte ~send] creates an auth stream.
+      [recv_byte ()] reads one byte; [send line] writes a complete
+      line (including the trailing "\r\n" the caller appended). *)
 
 val max_line_length : int
   (** Maximum length accepted for lines of the authentication
@@ -90,9 +89,9 @@ module Client : sig
 
   (** {8 Predefined mechanisms} *)
 
-  val mech_external : mechanism
+  val mech_external : ?uid:string -> unit -> mechanism
   val mech_anonymous : mechanism
-  val mech_dbus_cookie_sha1 : mechanism
+  val mech_dbus_cookie_sha1 : ?uid:string -> cookie:string -> unit -> mechanism
   val default_mechanisms : mechanism list
 
   (** {6 Authentication} *)
@@ -159,7 +158,7 @@ module Server : sig
 
   val mech_anonymous : mechanism
   val mech_external : mechanism
-  val mech_dbus_cookie_sha1 : mechanism
+  val mech_dbus_cookie_sha1 : ?context:string -> id:int32 -> cookie:string -> unit -> mechanism
   val default_mechanisms : mechanism list
 
   (** {6 Authentication} *)

@@ -1,3 +1,5 @@
+(dirs src tools docs utils test_mirage_connect)
+
 (env
  (release
    (flags (:standard -w -3-6-7-9-27-32-33-34-35-37-38-39)))

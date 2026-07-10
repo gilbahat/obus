@@ -7,6 +7,7 @@
  * This file is a part of obus, an ocaml implementation of D-Bus.
  *)
 
+module Lwt_log = Lwt_log_core
 let section = Lwt_log.Section.make "obus(wire)"
 
 open Printf
@@ -128,7 +129,7 @@ let protocol_error msg = Protocol_error msg
    | Message size calculation                                        |
    +-----------------------------------------------------------------+ *)
 
-module FD_set = Set.Make(struct type t = Unix.file_descr let compare = compare end)
+module FD_set = Set.Make(struct type t = int let compare = compare end)
 
 module Count =
 struct
@@ -510,7 +511,7 @@ end
    | Common writing functions                                      |
    +---------------------------------------------------------------+ *)
 
-module FD_map = Map.Make(struct type t = Unix.file_descr let compare = Stdlib.compare end)
+module FD_map = Map.Make(struct type t = int let compare = Stdlib.compare end)
 
 (* A pointer for serializing data *)
 type wpointer = {
@@ -817,7 +818,7 @@ struct
     put_uint buffer 12 fields_length;
 
     (* Create the array of file descriptors *)
-    let fds = Array.make fd_count Unix.stdin in
+    let fds = Array.make fd_count 0 in
     FD_map.iter (fun fd index -> Array.unsafe_set fds index fd) ptr.fds;
 
     (Bytes.unsafe_to_string ptr.buf, fds)
@@ -826,53 +827,29 @@ end
 module LE_writer = Make_writer(LE_integer_writers)
 module BE_writer = Make_writer(BE_integer_writers)
 
-let string_of_message ?(byte_order=Lwt_io.system_byte_order) msg =
+type byte_order = Little_endian | Big_endian
+
+let system_byte_order = if Sys.big_endian then Big_endian else Little_endian
+
+let string_of_message ?(byte_order=system_byte_order) msg =
   try
     match byte_order with
-      | Lwt_io.Little_endian ->
+      | Little_endian ->
           LE_writer.write_message 'l' msg
-      | Lwt_io.Big_endian ->
+      | Big_endian ->
           BE_writer.write_message 'B' msg
   with exn ->
     raise (map_exn data_error exn)
 
-let write_message oc ?byte_order msg =
+(** [write_message send ?byte_order msg] serializes [msg] and passes
+    the result to [send]. Fails if the message contains file descriptors. *)
+let write_message send ?byte_order msg =
   match string_of_message ?byte_order msg with
     | str, [||] ->
-        Lwt_io.write oc str
+        send str
     | _ ->
         Lwt.fail (Data_error "Cannot send a message with file descriptors on a channel")
 
-type writer = {
-  w_channel : Lwt_io.output_channel;
-  w_file_descr : Lwt_unix.file_descr;
-}
-
-let close_writer writer = Lwt_io.close writer.w_channel
-
-let writer fd = {
-  w_channel = Lwt_io.of_fd ~mode:Lwt_io.output ~close:Lwt.return fd;
-  w_file_descr = fd;
-}
-
-let write_message_with_fds writer ?byte_order msg =
-  match string_of_message ?byte_order msg with
-    | buf, [||] ->
-        (* No file descriptor to send, simply use the channel *)
-        Lwt_io.write writer.w_channel buf
-    | buf, fds ->
-        Lwt_io.atomic begin fun oc ->
-          (* Ensures there is nothing left to send: *)
-          let%lwt () = Lwt_io.flush oc in
-          let len = String.length buf in
-          let vec = Lwt_unix.IO_vectors.create () in
-          Lwt_unix.IO_vectors.append_bytes vec (Bytes.unsafe_of_string buf) 0 len;
-          (* Send the file descriptors and the message: *)
-          let%lwt n = Lwt_unix.Versioned.send_msg_2 writer.w_file_descr vec (Array.to_list fds) in
-          assert (n >= 0 && n <= len);
-          (* Write what is remaining: *)
-          Lwt_io.write_from_string_exactly oc buf n (len - n)
-        end writer.w_channel
 
 (* +-----------------------------------------------------------------+
    | Common reading operations                                       |
@@ -883,7 +860,7 @@ type rpointer = {
   buf : string;
   mutable ofs : int;
   max : int;
-  mutable fds : Unix.file_descr array;
+  mutable fds : int array;
   (* The array of file descriptors received with the message *)
 }
 
@@ -1192,24 +1169,19 @@ end
 module LE_reader = Make_reader(LE_integer_readers)
 module BE_reader = Make_reader(BE_integer_readers)
 
-let read_message ic =
+(** [read_message recv] deserializes a D-Bus message using [recv n],
+    which must read exactly [n] bytes and return them as a string. *)
+let read_message recv =
   try%lwt
-    Lwt_io.atomic begin fun ic ->
-      let buffer = Bytes.create 16 in
-      let%lwt () = Lwt_io.read_into_exactly ic buffer 0 16 in
-      let buffer = Bytes.unsafe_to_string buffer in
-      (match get_char buffer 0 with
-         | 'l' -> LE_reader.read_message
-         | 'B' -> BE_reader.read_message
-         | ch -> raise (Protocol_error(invalid_byte_order ch)))
-        buffer
-        (fun length f ->
-           let length = length - 16 in
-           let buffer = Bytes.create length in
-           let%lwt () = Lwt_io.read_into_exactly ic buffer 0 length in
-           let buffer = Bytes.unsafe_to_string buffer in
-           f { buf = buffer; ofs = 0; max = length; fds = [||] } None Lwt.return)
-    end ic
+    let%lwt header = recv 16 in
+    (match get_char header 0 with
+       | 'l' -> LE_reader.read_message
+       | 'B' -> BE_reader.read_message
+       | ch -> raise (Protocol_error(invalid_byte_order ch)))
+      header
+      (fun length f ->
+         let%lwt body = recv (length - 16) in
+         f { buf = body; ofs = 0; max = length - 16; fds = [||] } None Lwt.return)
   with exn ->
     raise (map_exn protocol_error exn)
 
@@ -1227,69 +1199,6 @@ let message_of_string buffer fds =
   with exn ->
     raise (map_exn protocol_error exn)
 
-type reader = {
-  r_channel : Lwt_io.input_channel;
-  r_pending_fds : Unix.file_descr Queue.t;
-  (* File descriptors received and not yet taken *)
-}
-
-let close_reader reader =
-  let fds = Queue.fold (fun fds fd -> fd :: fds) [] reader.r_pending_fds in
-  Queue.clear reader.r_pending_fds;
-  let%lwt () =
-    Lwt_list.iter_p
-      (fun fd ->
-         try
-           Lwt_unix.close (Lwt_unix.of_unix_file_descr ~set_flags:false fd)
-         with Unix.Unix_error(err, _, _) ->
-           Lwt_log.error_f ~section "cannot close file descriptor: %s" (Unix.error_message err))
-      fds
-  in
-  Lwt_io.close reader.r_channel
-
-let reader fd =
-  let pending_fds = Queue.create () in
-  {
-    r_channel = Lwt_io.make ~mode:Lwt_io.input
-      (fun buf ofs len ->
-        let%lwt n, fds = Lwt_bytes.recv_msg fd [Lwt_bytes.io_vector buf ofs len] in
-         List.iter (fun fd ->
-                      (try Unix.set_close_on_exec fd with _ -> ());
-                      Queue.push fd pending_fds) fds;
-         Lwt.return n);
-    r_pending_fds = pending_fds;
-  }
-
-let read_message_with_fds reader  =
-  let consumed_fds = ref [] in
-  try%lwt
-    Lwt_io.atomic begin fun ic ->
-      let buffer = Bytes.create 16 in
-      let%lwt () = Lwt_io.read_into_exactly ic buffer 0 16 in
-      let buffer = Bytes.unsafe_to_string buffer in
-      (match get_char buffer 0 with
-         | 'l' -> LE_reader.read_message
-         | 'B' -> BE_reader.read_message
-         | ch -> raise (Protocol_error(invalid_byte_order ch)))
-        buffer
-        (fun length f ->
-           let length = length - 16 in
-           let buffer = Bytes.create length in
-           let%lwt () = Lwt_io.read_into_exactly ic buffer 0 length in
-           let buffer = Bytes.unsafe_to_string buffer in
-           f { buf = buffer; ofs = 0; max = length; fds = [||] } (Some(consumed_fds, reader.r_pending_fds)) Lwt.return)
-    end reader.r_channel
-  with exn ->
-    let%lwt () =
-      Lwt_list.iter_p
-        (fun fd ->
-           try
-             Lwt_unix.close (Lwt_unix.of_unix_file_descr ~set_flags:false fd)
-           with Unix.Unix_error(err, _, _) ->
-             Lwt_log.error_f ~section "cannot close file descriptor: %s" (Unix.error_message err))
-        !consumed_fds
-    in
-    Lwt.fail (map_exn protocol_error exn)
 
 (* +-----------------------------------------------------------------+
    | Size computation                                                |

@@ -127,7 +127,7 @@ module V : sig
     | String of string
     | Signature of signature
     | Object_path of OBus_path.t
-    | Unix_fd of Unix.file_descr
+    | Unix_fd of int
 
   type single =
       private
@@ -154,7 +154,7 @@ module V : sig
   val string : string -> basic
   val signature : signature -> basic
   val object_path : OBus_path.t -> basic
-  val unix_fd : Unix.file_descr -> basic
+  val unix_fd : int -> basic
 
   val basic : basic -> single
   val array : T.single -> single list -> single
@@ -182,7 +182,7 @@ module V : sig
   val basic_string : string -> single
   val basic_signature : signature -> single
   val basic_object_path : OBus_path.t -> single
-  val basic_unix_fd : Unix.file_descr -> single
+  val basic_unix_fd : int -> single
 
   (** {6 Typing} *)
 
@@ -245,7 +245,7 @@ module C : sig
   val string : string basic
   val signature : signature basic
   val object_path : OBus_path.t basic
-  val unix_fd : Unix.file_descr basic
+  val unix_fd : int basic
 
   val basic : 'a basic -> 'a single
   val structure : 'a sequence -> 'a single
@@ -266,7 +266,7 @@ module C : sig
   val basic_string : string single
   val basic_signature : signature single
   val basic_object_path : OBus_path.t single
-  val basic_unix_fd : Unix.file_descr single
+  val basic_unix_fd : int single
 
   (** {6 Types extraction} *)
 
